@@ -1,0 +1,199 @@
+# ============================================================================
+# Caso 3D "vortex tubes" - incflo/AMReX su GPU (CUDA), griglia AMR adattiva
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+#     MINLEVEL / MAXLEVEL / REF_RATIO (stessa convenzione del solver 2D)
+# ----------------------------------------------------------------------------
+# livello 2D L -> dx = dy = dz = 2^-L ; griglia base = MINLEVEL, piu' fine
+# = MAXLEVEL ; n_cell = 2^MINLEVEL 2^MINLEVEL 4*2^MINLEVEL  (LZ=4 su z).
+#
+# Un livello AMR raffina di REF_RATIO (default 4 = "due gradini 2D" in un
+# colpo solo), quindi:
+#   amr.max_level = ceil((MAXLEVEL - MINLEVEL) / log2(REF_RATIO))
+#   amr.ref_ratio = rapporti per livello ("4", oppure "4 2" se la differenza
+#                   e' dispari; con REF_RATIO=2 e' "2 2 ...")
+#
+# Esempi (REF_RATIO=4, default):
+#   MINLEVEL=4 MAXLEVEL=6 -> base 16 16 64,   1 livello "4"   -> max 64 64 256    (dx_min 2^-6)
+#   MINLEVEL=6 MAXLEVEL=8 -> base 64 64 256,  1 livello "4"   -> max 256 256 1024 (dx_min 2^-8)  [default]
+#   MINLEVEL=4 MAXLEVEL=7 -> base 16 16 64,   2 livelli "4 2" -> max 128 128 512  (dx_min 2^-7)
+#
+# I launcher ./run.sh e ./_avvia_x.sh traducono MINLEVEL/MAXLEVEL/REF_RATIO
+# nei parametri AMReX e sovrascrivono SEMPRE amr.n_cell, amr.max_level e
+# amr.ref_ratio scritti qui sotto:
+#   MINLEVEL=4 MAXLEVEL=6 ./run.sh
+#   ./_avvia_x.sh 4 6
+#   REF_RATIO=2 ./run.sh 6 8          # classico raffinamento x2
+# (le righe amr.* qui sotto valgono solo lanciando incflo.ex direttamente,
+#  senza launcher)
+# ----------------------------------------------------------------------------
+
+#
+# Cosa simula
+#   Due tubi di vorticità co-rotanti con distacco "varicose" in z e assi
+#   inclinati a X nel piano x-z. E' la stessa fisica di
+#   gpu_nvidia_3d/saetta3d.c (Basilisk, griglia FISSA); qui però la griglia
+#   si raffina dinamicamente dove serve (|omega| alta), come faceva
+#   l'adapt_wavelet di saetta_adattiva.c.
+#
+# Come si legge la griglia (equivalenza con Basilisk)
+#   Basilisk: init_grid(1 << MINLEVEL) ... raffinamento fino a MAXLEVEL
+#   Qui il ruolo di MINLEVEL/MAXLEVEL/REF_RATIO lo fanno (vedi sezione in
+#   alto): amr.n_cell = griglia base, amr.max_level/amr.ref_ratio = livelli
+#   sopra, fino a dx = 2^-MAXLEVEL.
+#
+#   I valori scritti sotto (64 64 256, max_level = 2, ref_ratio default 2)
+#   sono solo il fallback per run dirette di incflo.ex: corrispondono a
+#   MINLEVEL 6 / MAXLEVEL 8 con REF_RATIO=2 (3 griglie: 2^-6, 2^-7, 2^-8).
+#   I launcher passano sempre i loro valori, es. con REF_RATIO=4 c'e' un
+#   solo livello: base 2^-6 -> 2^-8 (cio' che serve al confronto 2D).
+#   Il livello 2 NON e' tutto raffinato: esiste solo dove |omega| supera
+#   la soglia (vedi sezione ADAPTIVE MESH REFINEMENT).
+#
+# Altre note
+#   - Build in SINGOLA precisione (come i run GPU di Basilisk).
+#   - VRAM GPU (8 GB) dipende dalle soglie. Default vorterr = 5e-3 0.30.
+#     Misure fatte con queste soglie:
+#       MINLEVEL=4 MAXLEVEL=6 (REF_RATIO=4): griglia a 2^-6 su tutto il dominio
+#           -> 1.05M celle, ~0.5 s/passo, VRAM < 0.5 GB (griglia ~ uniforme 64x64x256)
+#       MINLEVEL=5 MAXLEVEL=7 (REF_RATIO=4): livello 1 a 2^-7 su 7.19M celle (85.7% dominio)
+#           -> ~1.5 s/passo, ~2618 MB arena
+#       MINLEVEL=6 MAXLEVEL=8 (REF_RATIO=4): livello 1 pieno = 67M celle
+#           -> NON sta in 8 GB (alzare vorterr o abbassare i livelli)
+#   - Multi-livello (es. 4->8 = 2 livelli "4 4"): servono soglie per livello.
+#       VORTERR="5e-3 0.30": L1 100% (1.05M) + L2 12.4% (8.31M) -> ~3.4 GB, ~1.6 s/passo
+#   - Costo: scala con le celle; per una run breve: stop_time = 50.
+#
+# Formato: "chiave = valore   # commento". Si puo' sovrascrivere qualsiasi
+# chiave da riga di comando, es.:
+#     ./incflo.ex saetta3d_inputs stop_time=50.0 amr.max_level=1
+# ============================================================================
+
+
+#¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨#
+#            SIMULATION STOP            #
+#.......................................#
+# stop_time e' TEMPO SIMULATO, non passi: con dt~0.014 servono ~14.000
+# passi per arrivare a t=200. max_step limita i passi (<0 = nessun limite).
+stop_time               =   200.0
+max_step                =   -1
+steady_state            =   0           # 1 = ferma a flusso stazionario
+
+
+#¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨#
+#         TIME STEP COMPUTATION         #
+#.......................................#
+incflo.fixed_dt         =   -1.         # <0 = dt adattivo (regola con cfl)
+incflo.cfl              =   0.5         # CFL del passo adattivo (max 0.5 con schema MOL)
+# Override dal launcher:  CFL=0.5 ./run.sh 4 6    (attenzione: dt ~ CFL*dx_min/|u|)
+
+
+#¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨#
+#            INPUT AND OUTPUT           #
+#.......................................#
+# (i plotfile AMReX stanno in plt*/NNNNN/: Header + dati livelli;
+#  "vort" e' |omega| calcolato dal solver, non serve post-processing)
+amr.plot_int            =   -1          # <0 = niente plot a passo fisso
+amr.plot_per_approx     =   5.0         # plotfile ~ogni 5 unita' di tempo
+amr.check_int           =   -1          # <0 = niente checkpoint
+amr.restart             =   ""          # "" = parti da zero
+amr.plotVariables       =   velx vely velz vort density
+incflo.verbose          =   1           # 0 = silenzioso, 2 = piu' dettagli
+
+
+#¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨#
+#               PHYSICS                 #
+#.......................................#
+incflo.gravity          =   0.  0.  0.  # nessuna forza di volume
+incflo.ro_0             =   1.          # densita' di riferimento
+incflo.mu               =   1e-5        # viscosita' dinamica: nu = mu/ro_0
+incflo.advection_type   = "MOL"         # 2° ordine in spazio (come AB2 di saetta)
+
+
+#¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨#
+#        ADAPTIVE MESH REFINEMENT       #
+#.......................................#
+# Livello 0 = griglia di base (tutto il dominio), sempre presente.
+# Gli altri livelli vengono creati SOLO dove il criterio di raffinamento
+# (vorterr, sotto) taglia le celle, e vengono ricostruiti ogni regrid_int
+# passi. Alzare max_level = piu' risoluzione (e piu' memoria).
+amr.n_cell              =   64  64  256 # livello 0: dx = 1/64 (x,y); z: 4/256 = 1/64
+amr.max_level           =   2           # 2 livelli: dx_min = 1/256 (= MAXLEVEL 8)
+amr.regrid_int          =   5           # ricostruisci griglia ogni 5 passi
+# Override dal launcher:  REGRID_INT=3 ./run.sh 4 6
+amr.max_grid_size       =   64          # box max 64^3 (box piu' grandi = meno overhead)
+amr.v                   =   1           # stampa "Regridding..." e riepilogo griglia
+
+# Criterio di raffinamento: taglia le celle con |omega| >= soglia.
+# Una soglia PER LIVELLO: la 1a vale da L0->L1, la 2a da L1->L2, ecc.
+#   + bassa = piu' celle raffinate (piu' accuratezza, piu' memoria)
+#   + alta  = meno celle (piu' veloce, meno memoria)
+# Con una sola soglia (come 1e-3 qui) e un solo livello AMR, se la soglia e'
+# molto bassa il raffinamento copre tutto il dominio (griglia ~ uniforme a
+# dx = 2^-MAXLEVEL).
+# Soglie di raffinamento, UNA PER LIVELLO AMR (|omega| >= soglia):
+#   1a soglia (5e-3)  = raffinamento L0 -> L1
+#   2a soglia (0.30)  = raffinamento L1 -> L2   (usata solo se max_level >= 2)
+# Se ne dai meno di max_level, l'ultima viene ripetuta.
+incflo.vorterr          =   5e-3 0.30
+# Override dal launcher:
+#   VORTERR="5e-3" ./run.sh 4 6           # 1 solo livello: conta solo la prima
+#   VORTERR="5e-3 0.30" ./run.sh 4 8      # 2 livelli (4/8): L2 raffinato al 12% ~ 8.3M celle
+# NOTA VRAM: se metti 5e-3 (o meno) su TUTTI i livelli, l'ultima
+# viene ripetuta e il livello 2 si raffinerebbe quasi ovunque (~67M celle):
+# non sta in 8 GB. Alza le soglie profonde o usa MAX_CELLS=... .
+
+# Budget massimo di celle su TUTTI i livelli (default = 67.1M, le stesse
+# celle della griglia fissa 256x256x1024). Se il regrid supera il budget,
+# le soglie vorterr vengono alzate automaticamente a ogni regrid
+# (feedback); 0 = nessun limite.
+incflo.max_cells        =   67e6
+# Override dal launcher:  MAX_CELLS=20e6 ./run.sh 4 6   (0 = nessun budget)
+
+
+#¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨#
+#              GEOMETRY                 #
+#.......................................#
+geometry.prob_lo        =   -0.5 -0.5 0.  # angolo basso
+geometry.prob_hi        =    0.5  0.5 4.  # angolo alto (z: lunghezza LZ=4)
+geometry.is_periodic    =   0   0   0     # nessuna direzione periodica
+
+
+#¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨#
+#       BOUNDARY CONDITIONS             #
+#.......................................#
+# "sw" = parete slip (free-slip), come saetta3d.c su tutti e 6 i lati.
+xlo.type = sw
+xhi.type = sw
+ylo.type = sw
+yhi.type = sw
+zlo.type = sw
+zhi.type = sw
+
+
+#¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨#
+#              LINEAR SOLVERS           #
+#.......................................#
+# Proiezioni (MAC e nodale). In SINGOLA precisione il residuo di questi
+# solve stagna a ~1e-4 (limite di round-off del float): le tolleranze
+# default (1e-4) sono al limite e il solver nodale aborta. Tenute a 1e-3.
+mac_proj.mg_rtol        =   1e-3
+mac_proj.mg_atol        =   1e-6
+nodal_proj.mg_rtol      =   1e-3
+nodal_proj.mg_atol      =   1e-6
+
+
+#¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨¨#
+#          INITIAL CONDITIONS           #
+#.......................................#
+# probtype 1001 = "vortex tubes" (implementato in prob_init_fluid_usr.cpp).
+# Traiettoria dei centri dei tubi (s = +1/-1):
+#   xc(z) = s*DD*(1 + PERT*cos(2*pi*z/LZ)) - s*TILT*DD*(z - LZ/2)/(LZ/2)
+incflo.probtype         =   1001
+saetta.DD               =   0.14        # semi-distacco a riposo (2D: 0.28/2)
+saetta.SIGMA            =   0.09        # larghezza dei nuclei
+saetta.PERT             =   0.10        # perturbazione varicose (frazione di DD)
+saetta.TILT             =   2.0         # inclinazione a X (apertura ~8 gradi)
+saetta.LZ               =   4.0         # lunghezza del dominio in z
+incflo.do_initial_proj  =   1           # proiezione iniziale (u ~ a divergenza 0)

@@ -1,0 +1,17 @@
+# DeepSeek Harness (richiesta: non caricare)
+.dsh/
+# credenziali Google Drive (client secret / token) - NON pubblicare
+credenziali/
+# cache Python
+__pycache__/
+*.pyc
+# dati e risultati pesanti (run dirs, matrici, campi, frame)
+risultati/
+solutori_secondo_ordine/heatmap_*/
+*.bin
+*.dat
+*.ppm
+# binari compilati
+saetta
+gpu_nvidia_3d/saetta3d_gpu
+*.o

@@ -1,0 +1,250 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index b559ad0..a5cf80a 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -97,7 +97,7 @@ if (AMREX_HOME)  # SUPERBUILD MODE
+   # Set required settings for AMReX
+   set(USE_XSDK_DEFAULTS       ON            CACHE INTERNAL "")
+   set(XSDK_ENABLE_Fortran     OFF           CACHE INTERNAL "")
+-  set(XSDK_PRECISION          "DOUBLE"      CACHE INTERNAL "")
++  set(XSDK_PRECISION          "SINGLE"      CACHE INTERNAL "")
+   set(AMReX_SPACEDIM          ${INCFLO_DIM} CACHE INTERNAL "")
+   set(AMReX_MPI               ${INCFLO_MPI} CACHE INTERNAL "")
+   set(AMReX_OMP               ${INCFLO_OMP} CACHE INTERNAL "")
+diff --git a/src/incflo.cpp b/src/incflo.cpp
+index db497da..058d95b 100644
+--- a/src/incflo.cpp
++++ b/src/incflo.cpp
+@@ -48,7 +48,7 @@ void incflo::InitData ()
+     {
+         // This tells the AmrMesh class not to iterate when creating the initial
+         // grid hierarchy
+-        // SetIterateToFalse();
++        SetIterateToFalse();
+ 
+         // This tells the Cluster routine to use the new chopping routine which
+         // rejects cuts if they don't improve the efficiency
+diff --git a/src/incflo_tagging.cpp b/src/incflo_tagging.cpp
+index 1e82a0a..45cee28 100644
+--- a/src/incflo_tagging.cpp
++++ b/src/incflo_tagging.cpp
+@@ -13,7 +13,9 @@ void incflo::ErrorEst (int levc, TagBoxArray& tags, Real time, int /*ngrow*/)
+     BL_PROFILE("incflo::ErrorEst()");
+ 
+     static bool first = true;
+-    static Vector<Real> rhoerr_v, gradrhoerr_v;
++    static Vector<Real> rhoerr_v, gradrhoerr_v, vorterr_v;
++    static Real cell_budget = 0.;      // incflo.max_cells (0 = off)
++    static Real budget_scale = 1.;     // fattore sulle soglie (>= 1)
+ 
+     static bool tag_region;
+ 
+@@ -33,6 +35,14 @@ void incflo::ErrorEst (int levc, TagBoxArray& tags, Real time, int /*ngrow*/)
+             gradrhoerr_v.resize(max_level+1, last);
+         }
+ 
++        pp.queryarr("vorterr", vorterr_v);
++        if (!vorterr_v.empty()) {
++            Real last = vorterr_v.back();
++            vorterr_v.resize(max_level+1, last);
++        }
++
++        pp.query("max_cells", cell_budget);
++
+         tag_region_lo.resize(3);
+         tag_region_hi.resize(3);
+ 
+@@ -47,11 +57,41 @@ void incflo::ErrorEst (int levc, TagBoxArray& tags, Real time, int /*ngrow*/)
+ 
+     bool tag_rho = levc < rhoerr_v.size();
+     bool tag_gradrho = levc < gradrhoerr_v.size();
++    bool tag_vort = levc < vorterr_v.size();
+ 
+     if (tag_gradrho) {
+         fillpatch_density(levc, time, m_leveldata[levc]->density, 1);
+     }
+ 
++    if (tag_vort) {
++        fillpatch_velocity(levc, time, m_leveldata[levc]->velocity, 1);
++    }
++
++    // Budget massimo di celle (incflo.max_cells, 0 = disattivato).
++    // Feedback al regrid: se la gerarchia del regrid precedente supera il
++    // budget si alzano le soglie di raffinamento; quando si e' sotto il
++    // budget si torna gradualmente verso le soglie nominali (scale -> 1).
++    if (cell_budget > 0. && levc == 0) {
++        long ncell = 0;
++        for (int lev = 0; lev <= max_level; ++lev) {
++            if (m_leveldata[lev]) {
++                ncell += m_leveldata[lev]->velocity.boxArray().numPts();
++            }
++        }
++        ParallelDescriptor::ReduceLongSum(ncell);
++        Real ratio = Real(ncell) / cell_budget;
++        if (ratio > 1.) {
++            budget_scale *= (ratio > 1.5 ? ratio : 1. + 0.25*(ratio - 1.));
++            budget_scale = amrex::min(budget_scale, Real(1.e6));
++        } else if (ratio < 0.7 && budget_scale > 1.) {
++            budget_scale *= 0.95;
++            budget_scale = amrex::max(budget_scale, Real(1.));
++        }
++        amrex::Print() << "ErrorEst: celle gerarchia " << ncell
++                       << "  budget " << (long) cell_budget
++                       << "  -> scale soglie = " << budget_scale << "\n";
++    }
++
+     AMREX_D_TERM(const Real l_dx = geom[levc].CellSize(0);,
+                  const Real l_dy = geom[levc].CellSize(1);,
+                  const Real l_dz = geom[levc].CellSize(2););
+@@ -134,6 +174,35 @@ void incflo::ErrorEst (int levc, TagBoxArray& tags, Real time, int /*ngrow*/)
+             });
+ #endif
+         }
++
++        // Raffinamento guidato dalla vorticità: taglia le celle dove
++        // |omega| supera incflo.vorterr (stesso spirito dell'adapt_wavelet
++        // su omega di saetta_adattiva.c).
++        if (tag_vort)
++        {
++            Real vorterr = vorterr_v[levc] * budget_scale;
++            const Real idx = Real(1.0)/l_dx;
++            const Real idy = Real(1.0)/l_dy;
++#if (AMREX_SPACEDIM == 3)
++            const Real idz = Real(1.0)/l_dz;
++#endif
++            Array4<Real const> const& vel = m_leveldata[levc]->velocity.const_array(mfi);
++            ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
++            {
++                Real vx = Real(0.5)*(vel(i+1,j,k,1) - vel(i-1,j,k,1))*idx;
++                Real uy = Real(0.5)*(vel(i,j+1,k,0) - vel(i,j-1,k,0))*idy;
++#if (AMREX_SPACEDIM == 3)
++                Real wx = Real(0.5)*(vel(i+1,j,k,2) - vel(i-1,j,k,2))*idx;
++                Real wy = Real(0.5)*(vel(i,j+1,k,2) - vel(i,j-1,k,2))*idy;
++                Real uz = Real(0.5)*(vel(i,j,k+1,0) - vel(i,j,k-1,0))*idz;
++                Real vz = Real(0.5)*(vel(i,j,k+1,1) - vel(i,j,k-1,1))*idz;
++                Real om = std::sqrt((wy-vz)*(wy-vz) + (uz-wx)*(uz-wx) + (vx-uy)*(vx-uy));
++#else
++                Real om = amrex::Math::abs(vx - uy);
++#endif
++                if (om >= vorterr) tag(i,j,k) = tagval;
++            });
++        }
+     } // mfi
+ 
+ #ifdef AMREX_USE_EB
+diff --git a/src/prob/incflo_prob_usr_I.H b/src/prob/incflo_prob_usr_I.H
+index fcc1025..2b756fa 100644
+--- a/src/prob/incflo_prob_usr_I.H
++++ b/src/prob/incflo_prob_usr_I.H
+@@ -131,4 +131,13 @@
+                            amrex::GpuArray<amrex::Real, AMREX_SPACEDIM> const& dx,
+                            amrex::GpuArray<amrex::Real, AMREX_SPACEDIM> const& problo,
+                            amrex::GpuArray<amrex::Real, AMREX_SPACEDIM> const& probhi);
++
++    void init_vortex_tubes (amrex::Box const& vbx, amrex::Box const& gbx,
++                            amrex::Array4<amrex::Real> const& vel,
++                            amrex::Array4<amrex::Real> const& density,
++                            amrex::Array4<amrex::Real> const& tracer,
++                            amrex::Box const& domain,
++                            amrex::GpuArray<amrex::Real, AMREX_SPACEDIM> const& dx,
++                            amrex::GpuArray<amrex::Real, AMREX_SPACEDIM> const& problo,
++                            amrex::GpuArray<amrex::Real, AMREX_SPACEDIM> const& probhi);
+ #endif
+diff --git a/src/prob/prob_init_fluid.cpp b/src/prob/prob_init_fluid.cpp
+index 73f631a..64de32d 100644
+--- a/src/prob/prob_init_fluid.cpp
++++ b/src/prob/prob_init_fluid.cpp
+@@ -193,6 +193,14 @@ void incflo::prob_init_fluid (int lev)
+                                domain, dx, problo, probhi);
+         }
+ #endif
++        else if (1001 == m_probtype)
++        {
++            init_vortex_tubes(vbx, gbx,
++                              ld.velocity.array(mfi),
++                              ld.density.array(mfi),
++                              ld.tracer.array(mfi),
++                              domain, dx, problo, probhi);
++        }
+         else if (2000 == m_probtype)
+         {
+             init_rotating_flow(vbx, gbx,
+diff --git a/src/prob/prob_init_fluid_usr.cpp b/src/prob/prob_init_fluid_usr.cpp
+index bb48682..9185ebf 100644
+--- a/src/prob/prob_init_fluid_usr.cpp
++++ b/src/prob/prob_init_fluid_usr.cpp
+@@ -2,4 +2,73 @@
+ 
+ using namespace amrex;
+ 
+-// This is just a placeholder file
++// Caso "vortex tubes" (probtype 1001): due tubi di vorticità co-rotanti
++// con perturbazione assiale varicose del distacco e assi inclinati a X
++// nel piano x-z, come saetta3d.c (Basilisk CENTERED, GPU).
++//
++//   d(z) = DD * (1 + PERT*cos(2 pi z / LZ))    distacco varicose
++//   X(z) = TILT * DD * (z - LZ/2)/(LZ/2)       inclinazione dei centri
++//
++// Campo di velocità azimutale attorno a ciascun tubo (a divergenza
++// nulla), somma dei contributi dei due nuclei:
++//
++//   u_theta(r) = sigma^2/(2 r) (1 - exp(-r^2/sigma^2))
++//
++// I parametri si leggono dalla sezione "saetta" degli inputs
++// (saetta.DD, saetta.SIGMA, saetta.PERT, saetta.TILT, saetta.LZ);
++// i default coincidono con quelli di saetta3d.c.
++
++void incflo::init_vortex_tubes (Box const& vbx, Box const& /*gbx*/,
++                                Array4<Real> const& vel,
++                                Array4<Real> const& /*density*/,
++                                Array4<Real> const& /*tracer*/,
++                                Box const& /*domain*/,
++                                GpuArray<Real, AMREX_SPACEDIM> const& dx,
++                                GpuArray<Real, AMREX_SPACEDIM> const& problo,
++                                GpuArray<Real, AMREX_SPACEDIM> const& /*probhi*/)
++{
++    ParmParse pp("saetta");
++    Real dd    = Real(0.14);   // semi distacco dei nuclei (2D: d = 0.28)
++    Real sigma = Real(0.09);   // larghezza dei nuclei
++    Real pert  = Real(0.10);   // perturbazione assiale (frazione di DD)
++    Real tilt  = Real(2.0);    // inclinazione X (fase ~8 gradi)
++    Real lz    = Real(4.0);    // lunghezza del dominio lungo z
++    pp.query("DD", dd);
++    pp.query("SIGMA", sigma);
++    pp.query("PERT", pert);
++    pp.query("TILT", tilt);
++    pp.query("LZ", lz);
++
++    const Real slope = tilt*dd/(Real(0.5)*lz);
++    const Real twopi = Real(2.0)*Real(3.1415926535897932);
++
++    ParallelFor(vbx, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
++    {
++        Real x = problo[0] + (Real(i) + Real(0.5))*dx[0];
++        Real y = problo[1] + (Real(j) + Real(0.5))*dx[1];
++        Real z = problo[2] + (Real(k) + Real(0.5))*dx[2];
++
++        Real u = Real(0.0), v = Real(0.0);
++
++        for (int s = -1; s <= 1; s += 2)
++        {
++            Real xc = s*dd*(Real(1.0) + pert*std::cos(twopi*z/lz))
++                    - s*slope*(z - Real(0.5)*lz);
++            Real dxr = x - xc;
++            Real r = std::sqrt(dxr*dxr + y*y);
++            if (r > Real(0.0))
++            {
++                Real ut = Real(0.5)*sigma*sigma
++                        * (Real(1.0) - std::exp(-(r*r)/(sigma*sigma)))/r;
++                u += -ut*y/r;
++                v +=  ut*dxr/r;
++            }
++        }
++
++        vel(i,j,k,0) = u;
++        vel(i,j,k,1) = v;
++#if (AMREX_SPACEDIM == 3)
++        vel(i,j,k,2) = Real(0.0);
++#endif
++    });
++}
