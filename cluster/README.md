@@ -124,3 +124,42 @@ cells, single precision, ~117 B/cell:
 - MAXLEVEL=8, NDIV0=1 -> 256x256x1024 = 67M cells (~7.5 GB), safe
 - MAXLEVEL=6, NDIV0=5 -> 320x320x1280 = 131M cells (~14.5 GB), close to full
 - MAXLEVEL=9 would need 537M cells (~58 GB): not possible
+
+## Divide the load between two 8 GB GPUs
+
+Wi-Fi turn machines into a small job farm, not a single big GPU: the
+Basilisk fixed-grid solver is single-GPU, and incflo multi-GPU over Wi-Fi
+(MPI) is slow and fragile. The efficient split is **task parallelism**:
+one GPU = one independent run, hosts in parallel, the rest queued.
+
+### Use the queue (master GPU + slave GPU)
+Edit `queue.txt` (one `host|command` per line, `local` = this PC),
+then:
+```bash
+./cluster/push_project.sh          # project -> slaves
+./cluster/queue.sh --wait          # both GPUs start working immediately
+```
+`queue.sh` runs one job at a time per host, so a GPU never runs two
+simulations at once (no OOM) and is always busy. Example for a
+convergence study: 2 runs per GPU instead of 4 sequential runs -> about
+half the wall time.
+
+### What fits on one 8 GB card
+- fixed grid (`gpu_nvidia_3d`): MAXLEVEL=8 -> 67M cells, ~7.5 GB
+- 3D AMR (`gpu_amr_3d`): measured 11.7M cells -> 6.4 GB; stay at
+  ~10M cells or set `MAX_CELLS=10e6` as a guard
+- heatmap/short studies: configs are ~1M cells, several can be queued
+
+### Split a single study between the two GPUs
+For the 3D adaptive heatmap, give half of the thresholds to each PC and
+merge the two result tables:
+```bash
+# master
+THR_LIST="0.5 0.3" OUT=risultati/heatmap_A TMAX=5 \
+  ./gpu_amr_3d/strumenti/heatmap_adattiva_3d.sh
+# slave (same command in the queue, with OUT=risultati/heatmap_B)
+# merge: the two heatmap.dat files have different x_idx -> combine with awk
+```
+For a single *bigger* run (one grid that does not fit in 8 GB) the only
+option is incflo with MPI+CUDA over a wired link; expect poor scaling
+over Wi-Fi, so prefer two independent runs instead.
