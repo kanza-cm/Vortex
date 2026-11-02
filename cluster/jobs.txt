@@ -1,0 +1,9 @@
+# one GPU job per line:  host|remote command (executed on the slave WSL)
+# host must be an alias from cluster/hosts.txt / ~/.ssh/config
+#
+# fixed-grid solver (gpu_nvidia_3d): default MAXLEVEL=8 -> 67M cells (~7.5 GB)
+slave1|cd ~/progetto/gpu_nvidia_3d && ./build.sh && ./run.sh
+# fixed-grid on a 16 GB card: NDIV0=5, MAXLEVEL=6 -> 320x320x1280 = 131M cells
+slave2|cd ~/progetto/gpu_nvidia_3d && EXTRA="-DNDIV0=5 -DMAXLEVEL=6" ./build.sh && ./run.sh
+# 3D AMR solver (gpu_amr_3d) as a third job (slave3)
+# slave3|cd ~/progetto/gpu_amr_3d && VORTERR="0.05 0.30" STOP_TIME=50 ./run.sh 5 8
