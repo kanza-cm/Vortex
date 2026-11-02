@@ -2,9 +2,9 @@
 # Build + launch in background + status (same as _avvia_x.sh in gpu_nvidia_3d).
 #
 # Supports MINLEVEL/MAXLEVEL/REF_RATIO like run.sh:
-#   ./_avvia_x.sh                  # MINLEVEL=6 MAXLEVEL=8 (REF_RATIO=4)
-#   ./_avvia_x.sh 4 6
-#   MINLEVEL=4 MAXLEVEL=6 REF_RATIO=4 ./_avvia_x.sh
+#   ./avvia.sh                  # MINLEVEL=6 MAXLEVEL=8 (REF_RATIO=4)
+#   ./avvia.sh 4 6
+#   MINLEVEL=4 MAXLEVEL=6 REF_RATIO=4 ./avvia.sh
 #
 # Note: it deletes the previous outputs (plt*, log, pid).
 set -e
@@ -15,7 +15,7 @@ echo "=== build (incflo AMR GPU, SINGLE precisione) ==="
 ./build.sh
 
 echo "=== lancio in background ==="
-. ./_livelli.sh
+. ./livelli.sh
 ./run.sh "$@"
 
 sleep 60

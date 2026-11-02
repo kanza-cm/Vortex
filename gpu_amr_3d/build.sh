@@ -43,4 +43,4 @@ echo "Compilo (CUDA, sm_86, SINGOLA precisione come i run GPU di Basilisk)..."
 "$CMAKE_BIN" --build "$BUILD_DIR" -j"${JOBS:-6}"
 
 echo
-echo "Build OK.  Esegui con: ./run.sh   (oppure ./_avvia_x.sh)"
+echo "Build OK.  Esegui con: ./run.sh   (oppure ./avvia.sh)"

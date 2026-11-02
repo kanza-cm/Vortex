@@ -25,7 +25,7 @@
 # MAXLEVEL step):
 #   REF_RATIO=2 MINLEVEL=6 MAXLEVEL=8 -> base 64 64 256, 2 levels "2 2"
 #
-# Usage: sourced by the launchers (. ./_livelli.sh). Reads MINLEVEL/MAXLEVEL
+# Usage: sourced by the launchers (. ./livelli.sh). Reads MINLEVEL/MAXLEVEL
 # from the environment or from the first two positional arguments. Exports:
 #   MINLEVEL  MAXLEVEL  ZDIV  REF_RATIO
 #   AMR_NCELL  AMR_MAXLEV  AMR_REFRATIO

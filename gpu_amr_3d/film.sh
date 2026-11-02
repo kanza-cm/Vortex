@@ -7,13 +7,6 @@
 #   risultati/video_T<TMAX>_2d.mp4   x-y slice (z = LZ/2) with |omega| + AMR boxes
 #   risultati/video_T<TMAX>_3d.mp4   rotating 3D view: AMR boxes + |omega| isosurface
 #   risultati/preview_*.png          previews
-#
-# Usage:
-#   ./film.sh                        # MINLEVEL=4 MAXLEVEL=6, TMAX=200
-#   ./film.sh 4 8                    # another level pair
-#   TMAX=50 PLOT_PER=1.0 ./film.sh 4 6
-#   VORTERR="5e-3 0.30" ./film.sh 4 6
-#
 # Parameters (env): MINLEVEL MAXLEVEL REF_RATIO TMAX (200) PLOT_PER (2.0)
 #   VORTERR (0.05) CFL (empty = from the file) RUN_DIR (/tmp/amr_T200)
 #   N2D (512) N3D (640) THR3D (0.2) FPS (5) OUT (<dir>/risultati)
@@ -27,19 +20,19 @@ if [ $# -ge 2 ] && [ -z "${MINLEVEL:-}" ] && [ -z "${MAXLEVEL:-}" ]; then
     MINLEVEL=$1; MAXLEVEL=$2; shift 2
 fi
 MINLEVEL="${MINLEVEL:-5}"
-MAXLEVEL="${MAXLEVEL:-6}"
+MAXLEVEL="${MAXLEVEL:-7}"
 export MINLEVEL MAXLEVEL
-. ./_livelli.sh
+. ./livelli.sh
 [ "$AMR_MAXLEV" -gt 0 ] || { echo "errore: serve MAXLEVEL > MINLEVEL"; exit 1; }
 
-TMAX="${TMAX:-200}"
-PLOT_PER="${PLOT_PER:-2.0}"
+TMAX="${TMAX:-20}"
+PLOT_PER="${PLOT_PER:-0.5}"
 PLOTVARS="${PLOTVARS:-}"      # e.g. "vort": writes only that variable in the plotfiles
 RUN_TAG="M${MINLEVEL}-${MAXLEVEL}_T${TMAX}"
 RUN_DIR="${RUN_DIR:-/tmp/amr_${RUN_TAG}}"
 OUT="${OUT:-$W/risultati/run_${RUN_TAG}}"
 N2D="${N2D:-512}"; N3D="${N3D:-640}"; THR3D="${THR3D:-0.2}"; FPS="${FPS:-5}"
-VORTERR="${VORTERR:-0.05}"          # threshold that makes the adaptation visible
+VORTERR="${VORTERR:-0.01}"          # threshold that makes the adaptation visible
 
 echo "=== film.sh ==="
 echo "  livelli: MINLEVEL=$MINLEVEL MAXLEVEL=$MAXLEVEL REF_RATIO=$REF_RATIO -> n_cell=\"$AMR_NCELL\" max_level=$AMR_MAXLEV ref_ratio=\"$AMR_REFRATIO\""
@@ -47,7 +40,7 @@ echo "  TMAX=$TMAX  plot ogni ~$PLOT_PER  vorterr=$VORTERR  CFL=${CFL:-dal file}
 echo "  run: $RUN_DIR   output: $OUT"
 
 mkdir -p "$RUN_DIR" "$OUT"
-cp -f run.sh _livelli.sh saetta3d_inputs "$RUN_DIR"/
+cp -f run.sh livelli.sh saetta3d_inputs "$RUN_DIR"/
 sed -i "s|^amr\.plot_per_approx.*|amr.plot_per_approx     =   $PLOT_PER|" "$RUN_DIR/saetta3d_inputs"
 if [ -n "$PLOTVARS" ]; then
     sed -i "s|^amr\.plotVariables.*|amr.plotVariables       =   $PLOTVARS|" "$RUN_DIR/saetta3d_inputs"

@@ -24,7 +24,7 @@
 set -e
 cd "$(dirname "$0")"
 
-. ./_livelli.sh                      # sets AMR_NCELL / AMR_MAXLEV / AMR_REFRATIO
+. ./livelli.sh                      # sets AMR_NCELL / AMR_MAXLEV / AMR_REFRATIO
 . "$HOME/cuda-env.sh"
 
 INCFLO_DIR="${INCFLO_DIR:-$HOME/src/incflo}"

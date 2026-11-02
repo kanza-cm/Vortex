@@ -1,0 +1,20 @@
+# DeepSeek Harness
+.dsh/
+# Google Drive credentials (do not publish)
+credenziali/
+# Python cache
+__pycache__/
+*.pyc
+# Results and heavy run data (per-solver risultati/)
+risultati/
+solutori_secondo_ordine/risultati/
+*.bin
+*.dat
+*.ppm
+# compiled binaries
+saetta
+gpu_nvidia_3d/saetta3d_gpu
+*.o
+# editor junk
+*.swp
+*~
