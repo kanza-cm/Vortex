@@ -22,4 +22,5 @@ gpu_nvidia_3d/saetta3d_gpu
 # mpi_fissa: build e output di test
 mpi_fissa/bin/
 mpi_fissa/out/
-*.bak_separation
+# patch backups
+*.bak-*
