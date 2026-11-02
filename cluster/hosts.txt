@@ -1,0 +1,3 @@
+# one ssh alias per line (aliases are defined in ~/.ssh/config)
+slave1
+slave2
