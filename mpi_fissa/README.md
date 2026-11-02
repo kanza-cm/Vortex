@@ -227,3 +227,27 @@ python3 scripts/confronta_campi.py out/m2_np1/omega3d_matrix.bin out/m2_np2/omeg
 Poi si passa a M3 (`VALIDAZIONE.md` §5) e a M4/M5/M6 di
 `PIANO_MILESTONE.md`. Il criterio per proseguire oltre M2 e' **solo** la
 correttezza della decomposizione, non la velocita'.
+
+## Stato validazione (misurato)
+
+| test | risultato |
+|---|---|
+| IC vs `saetta3d` (64x64x256, t=0) | differenze ~1e-7 |
+| MPI np=1 vs np=2 (CPU, t=0.2, CFL 0.1) | rms_rel 5.0e-7 |
+| MPI np=1 vs np=2 (GPU, t=0.05) | rms_rel 2.1e-7 |
+| L8 (256x256x1024) np=1 vs np=2 | rms_rel 2.8e-5 |
+| CPU vs GPU (np=1, NX=64) | rms_rel 1.4e-6 |
+| campo a t=1 vs `saetta3d` (CFL 0.1) | rms_rel 9.98e-3, linf 6.66e-2 |
+
+Il residuo ~1% a t=1 e' concentrato vicino alle pareti x/z. Verificato: BC
+free-slip identiche a `centered.h`, proiezione irrilevante (2-8 V-cycle),
+operatore viscoso ora allineato (`div(2 mu D)`, vedi `docs/BC_VISCOSITA.md`).
+Restano come cause note: flusso normale alle pareti forzato a zero nel
+prototipo (O(Delta)), sequenze di dt diverse (Basilisk limita la crescita
+del dt), dettagli di advezione. La diagnostica `separation` e' stata
+corretta (tie-break dell'argmax, vedi `patch.py`).
+
+Nota: su WSL il run GPU con 2 rank sulla STESSA scheda puo' bloccarsi in
+`cudaMemcpy2D` per uno stato del driver dxg (succede anche col codice
+pre-patch; i 2 PC con GPU separate non hanno questa contesa). Dopo un
+`wsl --shutdown` i test shared-GPU tornano disponibili.

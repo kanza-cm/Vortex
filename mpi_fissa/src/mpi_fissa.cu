@@ -725,18 +725,42 @@ static void viscosity(Vec3f u, float dt) {
         int i = idx % NXl; int t = idx / NXl;
         int j = t % NYl; int k = t / NYl;
         size_t p = IDX(g, k, j, i);
-        float lapx = (u.x[IDX(g, k, j, i + 1)] + u.x[IDX(g, k, j, i - 1)]
-                    + u.x[IDX(g, k, j + 1, i)] + u.x[IDX(g, k, j - 1, i)]
-                    + u.x[IDX(g, k + 1, j, i)] + u.x[IDX(g, k - 1, j, i)] - 6.f*u.x[p])/dh2;
-        float lapy = (u.y[IDX(g, k, j, i + 1)] + u.y[IDX(g, k, j, i - 1)]
-                    + u.y[IDX(g, k, j + 1, i)] + u.y[IDX(g, k, j - 1, i)]
-                    + u.y[IDX(g, k + 1, j, i)] + u.y[IDX(g, k - 1, j, i)] - 6.f*u.y[p])/dh2;
-        float lapz = (u.z[IDX(g, k, j, i + 1)] + u.z[IDX(g, k, j, i - 1)]
-                    + u.z[IDX(g, k, j + 1, i)] + u.z[IDX(g, k, j - 1, i)]
-                    + u.z[IDX(g, k + 1, j, i)] + u.z[IDX(g, k - 1, j, i)] - 6.f*u.z[p])/dh2;
-        u.x[p] += c*lapx;
-        u.y[p] += c*lapy;
-        u.z[p] += c*lapz;
+        /* div(2 D) e non lap(u): stessa discretizzazione di
+         * basilisk/src/viscosity.h (ramo non-TREE) --
+         *   x: 2*d2xx + d2yy + d2zz + d2(u.y)/dxdy + d2(u.z)/dxdz  ecc.
+         * Il fattore 2 sulla direzione della componente e' il termine
+         * grad(div u) che il laplaciano semplice non ha; alle pareti vale
+         * esattamente il doppio della derivata normale (componente normale
+         * dispari rispetto alla parete). Footprint +/-1: ghost gia' presenti. */
+        float ux = u.x[p], uy = u.y[p], uz = u.z[p];
+        float d2xx_x = u.x[IDX(g, k, j, i + 1)] - 2.f*ux + u.x[IDX(g, k, j, i - 1)];
+        float d2yy_x = u.x[IDX(g, k, j + 1, i)] - 2.f*ux + u.x[IDX(g, k, j - 1, i)];
+        float d2zz_x = u.x[IDX(g, k + 1, j, i)] - 2.f*ux + u.x[IDX(g, k - 1, j, i)];
+        float d2xx_y = u.y[IDX(g, k, j, i + 1)] - 2.f*uy + u.y[IDX(g, k, j, i - 1)];
+        float d2yy_y = u.y[IDX(g, k, j + 1, i)] - 2.f*uy + u.y[IDX(g, k, j - 1, i)];
+        float d2zz_y = u.y[IDX(g, k + 1, j, i)] - 2.f*uy + u.y[IDX(g, k - 1, j, i)];
+        float d2xx_z = u.z[IDX(g, k, j, i + 1)] - 2.f*uz + u.z[IDX(g, k, j, i - 1)];
+        float d2yy_z = u.z[IDX(g, k, j + 1, i)] - 2.f*uz + u.z[IDX(g, k, j - 1, i)];
+        float d2zz_z = u.z[IDX(g, k + 1, j, i)] - 2.f*uz + u.z[IDX(g, k - 1, j, i)];
+        /* trasposte: 0.25*(f(+,+) - f(-,+) - f(+,-) + f(-,-)) sui 4 angoli */
+        float cxy = 0.25f*(u.y[IDX(g, k, j + 1, i + 1)] - u.y[IDX(g, k, j + 1, i - 1)]
+                         - u.y[IDX(g, k, j - 1, i + 1)] + u.y[IDX(g, k, j - 1, i - 1)]);
+        float cxz = 0.25f*(u.z[IDX(g, k + 1, j, i + 1)] - u.z[IDX(g, k + 1, j, i - 1)]
+                         - u.z[IDX(g, k - 1, j, i + 1)] + u.z[IDX(g, k - 1, j, i - 1)]);
+        float cyx = 0.25f*(u.x[IDX(g, k, j + 1, i + 1)] - u.x[IDX(g, k, j - 1, i + 1)]
+                         - u.x[IDX(g, k, j + 1, i - 1)] + u.x[IDX(g, k, j - 1, i - 1)]);
+        float cyz = 0.25f*(u.z[IDX(g, k + 1, j + 1, i)] - u.z[IDX(g, k + 1, j - 1, i)]
+                         - u.z[IDX(g, k - 1, j + 1, i)] + u.z[IDX(g, k - 1, j - 1, i)]);
+        float czx = 0.25f*(u.x[IDX(g, k + 1, j, i + 1)] - u.x[IDX(g, k - 1, j, i + 1)]
+                         - u.x[IDX(g, k + 1, j, i - 1)] + u.x[IDX(g, k - 1, j, i - 1)]);
+        float czy = 0.25f*(u.y[IDX(g, k + 1, j + 1, i)] - u.y[IDX(g, k - 1, j + 1, i)]
+                         - u.y[IDX(g, k + 1, j - 1, i)] + u.y[IDX(g, k - 1, j - 1, i)]);
+        float lx = 2.f*d2xx_x + d2yy_x + d2zz_x + cxy + cxz;
+        float ly = 2.f*d2yy_y + d2xx_y + d2zz_y + cyx + cyz;
+        float lz = 2.f*d2zz_z + d2xx_z + d2yy_z + czx + czy;
+        u.x[p] += c*lx/dh2;
+        u.y[p] += c*ly/dh2;
+        u.z[p] += c*lz/dh2;
     });
 }
 
