@@ -1,8 +1,23 @@
-# hostfile per 2 PC: un rank per PC.
-# - localhost      = il PC master (questo)
-# - slave1         = alias ssh definito in ~/.ssh/config (vedi cluster/README.md)
-#   Se si usa il port-proxy:  Host slave1 / HostName <ip> / Port 2222
-# Entrambi i PC devono avere il progetto in $HOME/mpi_fissa (stesso percorso,
-# senza spazi) e il binario bin/mpi_fissa_gpu compilato.
+# hostfile per il run su 2 PC: UN rank per PC.
+#
+#   localhost  = il PC master (dove lanci mpirun) - obbligatorio
+#   slave1     = alias ssh del secondo PC, definito in ~/.ssh/config
+#                (vedi cluster/README.md; l'alias deve risolvere a un IP
+#                 raggiungibile, NON a un nome NetBIOS/mDNS)
+#
+# Regole che fanno funzionare le cose (imparate a spese di chi ci ha provato):
+#  1) `slots=1` NON e' opzionale: senza, OpenMPI puo' mettere tutti i rank su
+#     `localhost` e il "run a 2 PC" gira in realta' su una macchina sola.
+#  2) la prima riga deve essere la macchina locale. Se `localhost` da problemi
+#     (IPv6 ::1 su una rete solo IPv4) usare `127.0.0.1 slots=1`.
+#  3) il percorso del progetto deve essere IDENTICO sui due PC e senza spazi
+#     (vedi run_2pc.sh: usa --wdir e verifica il binario in remoto).
+#  4) si puo' aggiungere `--mca btl_tcp_if_include <iface>` in MPI_EXTRA se
+#     OpenMPI sceglie l'interfaccia sbagliata (tipico con WSL in NAT).
+#
+# Come lo si genera/verifica:
+#   mpirun --hostfile scripts/hostfile_2pc.txt -np 2 hostname
+#   -> deve stampare DUE hostname diversi (uno e' il master).
+#
 localhost slots=1
 slave1 slots=1

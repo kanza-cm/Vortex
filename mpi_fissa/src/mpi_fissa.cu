@@ -1228,24 +1228,65 @@ static Diag diagnostics_compute(void) {
     d.Umax = mx[0]; d.Wmax = mx[1];
     double m1 = mx[2];
 
-    /* secondo nucleo: posizione del massimo di wz sulla fetta nodo */
-    double px = 0., py = 0., w1 = 0.;
+    /* ------------------------------------------------------------------
+     * Primo nucleo: posizione del massimo di wz sulla fetta nodo.
+     *
+     * Il massimo puo' essere RAGGIUNTO DA PIU' CELLE: per questo caso (due
+     * tubi co-rotanti, IC simmetrica) wz sulla fetta e' pari in x e in y,
+     * quindi l'insieme di argmax e' simmetrico rispetto al centro del piano
+     * e la sua media vale (0,0).  Con px=py=0 il test x*px+y*py<0 diventa
+     * 0<0 (falso su ogni cella), m2 resta al suo inizializzatore, w2 resta 0
+     * e la formula finale forza sep=0.
+     * Rimedio:
+     *  1) si sceglie UNA cella di argmax con regola deterministica e globale
+     *     (x massima, poi y massima): il risultato non dipende da np ne' da
+     *     quale lato l'arrotondamento rompe la simmetria;
+     *  2) la media si fa solo sul plateau LOCALE 3x3 attorno a quella cella
+     *     (e' la parte di media intesa dal riferimento: rifinitura sub-cella
+     *     di un plateau connesso).
+     * ------------------------------------------------------------------ */
+    double key1 = -1.;
     if (K0 <= k_node_g && k_node_g < K1) {
         for (int j = 0; j < ny; j++)
             for (int i = 0; i < nx; i++) {
-                double wz = WZ_SLICE[(size_t)j*nx + i];
-                if (wz == m1) {
-                    w1 += 1.; px += -0.5 + (i + 0.5)*(double)DH; py += -0.5 + (j + 0.5)*(double)DH;
-                }
+                if (WZ_SLICE[(size_t)j*nx + i] != m1) continue;
+                double key = (double)i*(double)(nx + 1) + (double)j;  /* esatta in double */
+                if (key > key1) key1 = key;
+            }
+    }
+    allreduce_max(&key1, 1);            /* la stessa cella su tutti i rank */
+    int i1 = -1, j1 = -1;
+    if (key1 >= 0.) {
+        i1 = (int)(key1/(double)(nx + 1));
+        j1 = (int)(key1 - (double)i1*(double)(nx + 1) + 0.5);
+    }
+    double px = 0., py = 0., w1 = 0.;
+    if (K0 <= k_node_g && k_node_g < K1 && i1 >= 0) {
+        for (int j = j1 - 1; j <= j1 + 1; j++)
+            for (int i = i1 - 1; i <= i1 + 1; i++) {
+                if (i < 0 || i >= nx || j < 0 || j >= ny) continue;
+                if (WZ_SLICE[(size_t)j*nx + i] != m1) continue;
+                w1 += 1.; px += -0.5 + (i + 0.5)*(double)DH; py += -0.5 + (j + 0.5)*(double)DH;
             }
     }
     double red[3] = {px, py, w1};
     allreduce_sum(red, 3);
     px = red[0]; py = red[1]; w1 = red[2];
     if (w1 > 0.) { px /= w1; py /= w1; }
+    /* se il plateau locale e' ancora simmetrico (picco vicino al centro del
+     * piano) il centroide cade sull'origine: in quel caso si usa la cella di
+     * massimo scelta, che e' un punto ben definito. */
+    if (w1 > 0. && px*px + py*py < 0.25*(double)DH*(double)DH) {
+        px = -0.5 + (i1 + 0.5)*(double)DH; py = -0.5 + (j1 + 0.5)*(double)DH;
+    }
 
-    /* secondo nucleo: massimo nella meta' opposta del piano */
-    double m2 = 0.;
+    /* ------------------------------------------------------------------
+     * Secondo nucleo: massimo nella meta' opposta del piano.
+     * m2 parte da -1e300 e NON da 0: un massimo deve essere raggiunto; con 0
+     * il caso "tutti i wz negativi nella meta' opposta" non trovava nessuna
+     * cella con wz == m2 => w2=0 => sep=0 (seconda via al valore 0).
+     * ------------------------------------------------------------------ */
+    double m2 = -1e300;
     if (K0 <= k_node_g && k_node_g < K1) {
         for (int j = 0; j < ny; j++)
             for (int i = 0; i < nx; i++) {
@@ -1258,14 +1299,32 @@ static Diag diagnostics_compute(void) {
     }
     allreduce_max(&m2, 1);
 
-    double qx = 0., qy = 0., w2 = 0.;
+    double key2 = -1.;
     if (K0 <= k_node_g && k_node_g < K1) {
         for (int j = 0; j < ny; j++)
             for (int i = 0; i < nx; i++) {
                 double x = -0.5 + (i + 0.5)*(double)DH, y = -0.5 + (j + 0.5)*(double)DH;
-                if (x*px + y*py < 0. && WZ_SLICE[(size_t)j*nx + i] == m2) {
-                    w2 += 1.; qx += x; qy += y;
-                }
+                if (x*px + y*py >= 0.) continue;
+                if (WZ_SLICE[(size_t)j*nx + i] != m2) continue;
+                double key = (double)i*(double)(nx + 1) + (double)j;  /* esatta in double */
+                if (key > key2) key2 = key;
+            }
+    }
+    allreduce_max(&key2, 1);
+    int i2 = -1, j2 = -1;
+    if (key2 >= 0.) {
+        i2 = (int)(key2/(double)(nx + 1));
+        j2 = (int)(key2 - (double)i2*(double)(nx + 1) + 0.5);
+    }
+    double qx = 0., qy = 0., w2 = 0.;
+    if (K0 <= k_node_g && k_node_g < K1 && i2 >= 0) {
+        for (int j = j2 - 1; j <= j2 + 1; j++)
+            for (int i = i2 - 1; i <= i2 + 1; i++) {
+                if (i < 0 || i >= nx || j < 0 || j >= ny) continue;
+                double x = -0.5 + (i + 0.5)*(double)DH, y = -0.5 + (j + 0.5)*(double)DH;
+                if (x*px + y*py >= 0.) continue;
+                if (WZ_SLICE[(size_t)j*nx + i] != m2) continue;
+                w2 += 1.; qx += x; qy += y;
             }
     }
     double red2[3] = {qx, qy, w2};
