@@ -9,6 +9,7 @@ coalescing case (plus the 2D converging study that motivates it):
 | `gpu_nvidia/` | 2D GPU (CUDA) Basilisk solver |
 | `gpu_nvidia_3d/` | 3D fixed-grid GPU (CUDA) Basilisk solver |
 | `gpu_amr_3d/` | 3D adaptive-mesh GPU solver (incflo / AMReX) |
+| `mpi_fissa/` | MPI domain-decomposition prototype for the fixed-grid GPU solver (2 GPUs over 2 PCs) |
 
 Root files (`saetta.c`, `build.sh`, `run.sh`, `error_norm.py`) are the 2D
 uniform-grid reference case.

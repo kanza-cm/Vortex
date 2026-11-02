@@ -1,0 +1,4 @@
+# hostfile per il test LOCALE a 2 rank sulla stessa macchina (1 PC).
+# I due rank condividono la stessa GPU: va bene per validare la decomposizione
+# (memoria per rank dimezzata), non per misurare lo speedup di 2 GPU.
+localhost slots=2

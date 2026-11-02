@@ -18,3 +18,7 @@ gpu_nvidia_3d/saetta3d_gpu
 # editor junk
 *.swp
 *~
+
+# mpi_fissa: build e output di test
+mpi_fissa/bin/
+mpi_fissa/out/

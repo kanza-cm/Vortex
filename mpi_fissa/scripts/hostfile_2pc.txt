@@ -1,0 +1,8 @@
+# hostfile per 2 PC: un rank per PC.
+# - localhost      = il PC master (questo)
+# - slave1         = alias ssh definito in ~/.ssh/config (vedi cluster/README.md)
+#   Se si usa il port-proxy:  Host slave1 / HostName <ip> / Port 2222
+# Entrambi i PC devono avere il progetto in $HOME/mpi_fissa (stesso percorso,
+# senza spazi) e il binario bin/mpi_fissa_gpu compilato.
+localhost slots=1
+slave1 slots=1
