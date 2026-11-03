@@ -25,6 +25,7 @@ MINLEVEL="${MINLEVEL:-4}"
 LMIN="${LMIN:-4}"
 LMAX="${LMAX:-6}"
 TMAX="${TMAX:-5}"
+TILT="${TILT:-2.0}"      # inclinazione a X: 2 = ~8 gradi, 0 = tubi paralleli
 CFL="${CFL:-0.5}"
 REF_RATIO="${REF_RATIO:-4}"
 THR_LIST="${THR_LIST:-0.3 0.1 3e-2 1e-2}"
@@ -83,7 +84,7 @@ mk_run() {  # $1 = L  $2 = THR
     MLEV=$1; RAT=$2
     echo "=== L=$L thr=$THR  max_level=$MLEV ref_ratio=\"$RAT\" TMAX=$TMAX ==="
     ( cd "$run" && "$EXE" saetta3d_inputs amr.n_cell="$NCELL" amr.max_level="$MLEV" \
-          ${RAT:+amr.ref_ratio="$RAT"} stop_time="$TMAX" incflo.vorterr="$THR" \
+          ${RAT:+amr.ref_ratio="$RAT"} stop_time="$TMAX" incflo.vorterr="$THR" saetta.TILT="$TILT" \
           incflo.cfl="$CFL" incflo.max_cells="$MAX_CELLS" > log-saetta 2>&1 )
     if grep -qi "amrex::abort\|MPI_ABORT" "$run/log-saetta"; then
         echo "errore: run abortita ($run)"; tail -20 "$run/log-saetta"; exit 1

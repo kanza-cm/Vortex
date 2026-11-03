@@ -41,10 +41,11 @@ LMAX="${LMAX:-8}"      # last level = reference run (the finest one)
 T="${T:-10}"           # final time of each run
 CFL="${CFL:-0.3}"      # CFL (as in the production runs)
 NDIV0="${NDIV0:-1}"    # base divisions in x,y at MAXLEVEL=0 (z = 4x)
+TILT="${TILT:-2}"      # inclinazione a X (2 = ~8 gradi, 0 = tubi paralleli)
 
 LREF=$LMAX
 
-out="risultati/error_study/error_study_fissa_3d_gpu"
+out="${OUT_DIR:-risultati/error_study/error_study_fissa_3d_gpu}"
 rm -rf "$out"
 mkdir -p "$out"
 
@@ -68,7 +69,7 @@ while [ "$L" -le "$LREF" ]; do
         -I"$CUDA/include" -L"$CUDA/lib" -L"$CUDA/lib/stubs" \
         -DCFL_USER=$CFL \
         -DMOVIE=0 -DVTK=0 -DMATRIX=1 \
-        -DNDIV0=$NDIV0 -DMAXLEVEL=$L -DTMAX=$T \
+        -DNDIV0=$NDIV0 -DMAXLEVEL=$L -DTMAX=$T -DTILT=$TILT \
         saetta3d.c -o saetta3d_gpu -lm -lz
   )
   mv "$BUILD/saetta3d_gpu" "$run/saetta3d_gpu"

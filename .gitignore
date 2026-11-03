@@ -24,3 +24,6 @@ mpi_fissa/bin/
 mpi_fissa/out/
 # patch backups
 *.bak-*
+
+# studi TILT (run e output pesanti)
+gpu_nvidia_3d/vortici_*/
