@@ -26,4 +26,7 @@ mpi_fissa/out/
 *.bak-*
 
 # studi TILT (run e output pesanti)
-gpu_nvidia_3d/vortici_*/
+# studi TILT: ignora run e dump pesanti, tieni script e tabelle
+gpu_nvidia_3d/vortici_*/studio_errore_fissa/run*/
+gpu_nvidia_3d/vortici_*/heatmap_adattiva/L*_thr*/
+gpu_nvidia_3d/vortici_*/*.log
