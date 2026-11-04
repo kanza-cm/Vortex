@@ -126,6 +126,98 @@ event defaults_cfl (i = 0)
 // Constant viscosity (face vector)
 const face vector muc[] = { NU, NU, NU };
 
+/* ===================== checkpoint / restart =====================
+   Scrive ogni CHK_TSTEP (e a t=TMAX) un file binario chk_<t>.bin con
+   velocità cell-centered (media delle facce) e pressione.  Con
+   -DCHK_START=<t> la run riparte da quel file: la velocità di faccia
+   viene ricostruita come media dei due lati e la prima proiezione
+   sistema la divergenza.  Non è bit-exact (ricostruzione O(Delta^2)),
+   ma permette di continuare l'animazione. */
+#ifndef CHECKPOINT
+# define CHECKPOINT 0
+#endif
+#ifndef CHK_TSTEP
+# define CHK_TSTEP 1e30
+#endif
+#ifndef CHK_START
+# define CHK_START -1.
+#endif
+
+static void open_diagnostics(void) {
+    if (pid() == 0) {
+        FILE * fp = fopen("diagnostics.dat", "w");
+        fprintf(fp, "# t dt it enstrophy energy umax wmax circulation_slice separation xc yc cells mgp mgp_resa\n");
+        fclose(fp);
+        fprintf(stderr, "# t enstrophy energy umax wmax circulation_slice separation\n");
+    }
+}
+
+#if CHECKPOINT
+scalar CHKX[], CHKY[], CHKZ[];
+
+static void chk_set_time(double tt) { extern double t; t = tt; }
+
+static void chkname(double t, char *buf) {
+    snprintf(buf, 256, "chk_%.3f.bin", t);
+}
+
+static void write_checkpoint(double t) {
+    char name[256]; chkname(t, name);
+    FILE *fp = fopen(name, "wb");
+    if (!fp) { fprintf(ferr, "# chk: fopen %s fallita\n", name); return; }
+    int dims[3] = {NDIV0 << MAXLEVEL, NDIV0 << MAXLEVEL,
+                   (NDIV0 << MAXLEVEL)*(int)(LZ + 0.5)};
+    fwrite(dims, sizeof(int), 3, fp);
+    fwrite(&t, sizeof(double), 1, fp);
+    boundary((scalar *){u});
+    enum { CH = 65536 };
+    float *b = malloc(CH*4*sizeof(float));
+    size_t m = 0;
+    foreach (serial) {
+        b[4*m+0] = u.x[];
+        b[4*m+1] = u.y[];
+        b[4*m+2] = u.z[];
+        b[4*m+3] = p[];
+        if (++m == CH) { fwrite(b, sizeof(float), 4*m, fp); m = 0; }
+    }
+    if (m) fwrite(b, sizeof(float), 4*m, fp);
+    free(b); fclose(fp);
+    fprintf(ferr, "# chk: scritto %s (t = %.3f)\n", name, t);
+}
+
+static int read_checkpoint(double tload) {
+    char name[256]; chkname(tload, name);
+    FILE *fp = fopen(name, "rb");
+    if (!fp) { fprintf(ferr, "# chk: manca %s\n", name); return 0; }
+    int dims[3]; double t = 0.;
+    if (fread(dims, sizeof(int), 3, fp) != 3 ||
+        fread(&t, sizeof(double), 1, fp) != 1) { fclose(fp); return 0; }
+    long nx = NDIV0 << MAXLEVEL, ny = nx, nz = nx*(int)(LZ + 0.5);
+    if (dims[0] != nx || dims[1] != ny || dims[2] != nz) {
+        fprintf(ferr, "# chk: dimensioni %d %d %d diverse da %ld %ld %ld\n",
+                dims[0], dims[1], dims[2], nx, ny, nz);
+        fclose(fp); return 0;
+    }
+    size_t n = (size_t)nx*ny*nz;
+    float *b = malloc(4*n*sizeof(float));
+    if (!b || fread(b, sizeof(float), 4*n, fp) != 4*n) { free(b); fclose(fp); return 0; }
+    fclose(fp);
+    size_t m = 0;
+    foreach (serial) {
+        CHKX[] = b[4*m+0]; CHKY[] = b[4*m+1]; CHKZ[] = b[4*m+2]; p[] = b[4*m+3];
+        m++;
+    }
+    free(b);
+    foreach (serial) {
+        u.x[] = CHKX[]; u.y[] = CHKY[]; u.z[] = CHKZ[];
+    }
+    boundary((scalar *){u});
+    boundary({p});
+    fprintf(ferr, "# chk: caricato %s (t = %.3f)\n", name, t);
+    return 1;
+}
+#endif // CHECKPOINT
+
 // Centered components of the vorticity (from the differences of u)
 #define WX ((u.z[0,1,0] - u.z[0,-1,0]) - (u.y[0,0,1] - u.y[0,0,-1]))/(2.*Delta)
 #define WY ((u.x[0,0,1] - u.x[0,0,-1]) - (u.z[1,0,0] - u.z[-1,0,0]))/(2.*Delta)
@@ -169,6 +261,16 @@ int main()
 
 event init (t = 0)
 {
+#if CHECKPOINT
+    if (CHK_START >= 0.) {
+        if (read_checkpoint(CHK_START)) {
+            open_diagnostics();
+            chk_set_time(CHK_START);
+            goto chk_loaded;
+        }
+        fprintf(ferr, "# chk: checkpoint t=%g non trovato, uso la IC\n", CHK_START);
+    }
+#endif
     double slope = TILT*DD/(0.5*LZ);   // transverse shift per unit of z
     foreach() {
         u.x[] = u.y[] = u.z[] = 0.;
@@ -186,14 +288,11 @@ event init (t = 0)
     }
     boundary((scalar *){u});
 
-    if (pid() == 0) {
-        FILE * fp = fopen("diagnostics.dat", "w");
-        fprintf(fp, "# t dt it enstrophy energy umax wmax "
-            "circulation_slice separation xc yc cells mgp mgp_resa\n");
-        fclose(fp);
-        fprintf(stderr, "# t enstrophy energy umax wmax "
-            "circulation_slice separation\n");
-    }
+    open_diagnostics();
+
+#if CHECKPOINT
+chk_loaded: ;
+#endif
 }
 
 /**
@@ -480,6 +579,7 @@ static void write_vti (double t)
 #endif
 }
 
+
 // t = 0, VTK_TSTEP, 2*VTK_TSTEP, ... up to TMAX
 event vtk_dump (t += VTK_TSTEP; t <= TMAX)
     if (t >= VTK_TSTART) write_vti (t);
@@ -498,6 +598,12 @@ event vtk_dump (t += VTK_TSTEP; t <= TMAX)
 #endif
 
 #if MATRIX
+#if CHECKPOINT
+// checkpoint finale in t = TMAX (per ripartire con -DCHK_START=<t>)
+event chk_final (t = TMAX)
+    if (t > 0.) write_checkpoint(t);
+#endif
+
 event matrix (t = TMAX)
 {
     long nx = NDIV0 << MAXLEVEL, ny = nx, nz = nx*(int)(LZ + 0.5);

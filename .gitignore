@@ -30,3 +30,9 @@ mpi_fissa/out/
 gpu_nvidia_3d/vortici_*/studio_errore_fissa/run*/
 gpu_nvidia_3d/vortici_*/heatmap_adattiva/L*_thr*/
 gpu_nvidia_3d/vortici_*/*.log
+
+# animazione L8 (movie, checkpoint, matrici)
+gpu_nvidia_3d/vortici_*/animazione_*/
+!gpu_nvidia_3d/vortici_*/animazione_*/*.sh
+!gpu_nvidia_3d/vortici_*/animazione_*/README.md
+!gpu_nvidia_3d/vortici_*/animazione_*/saetta3d.c

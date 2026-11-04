@@ -1,0 +1,6 @@
+#!/bin/bash
+# Legge frame PPM concatenati da stdin e scrive un mp4 con ffmpeg.
+# Usato da Basilisk (output_ppm con file .mp4): chiamata "ppm2mp4 out.mp4".
+out="${1:?uso: ppm2mp4 out.mp4}"
+exec ffmpeg -loglevel error -y -framerate 2 -f image2pipe -vcodec ppm -i - \
+     -pix_fmt yuv420p -vcodec libx264 "$out"
