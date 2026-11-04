@@ -358,10 +358,14 @@ event diagnostics (t += 1; t <= TMAX)
     }
 }
 
+#ifndef MOVIE_TSTEP
+# define MOVIE_TSTEP 0.5   // intervallo tra i frame del movie (in tempo)
+#endif
+
 #if MOVIE
 // Movie: x-y slices at z = LZ/2 (node) and z = 0 (antinode).
 // Reuses p as buffer (no dedicated field, see the note above).
-event movie (t += 0.5; t <= TMAX)
+event movie (t += MOVIE_TSTEP; t <= TMAX)
 {
     boundary((scalar *){u});
     foreach()

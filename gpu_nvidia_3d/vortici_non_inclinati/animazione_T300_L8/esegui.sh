@@ -11,7 +11,7 @@ export CUDA="${CUDA:-$HOME/cuda-13.1}"
 export LD_LIBRARY_PATH="$CUDA/lib64:$CUDA/lib:/usr/lib/wsl/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
 EXTRA="-DTILT=0 -DNDIV0=1 -DMAXLEVEL=8 -DTMAX=300 -DMOVIE=1 -DCFL_USER=0.5 \
-       -DVTK=0 -DMATRIX=1 -DCHECKPOINT=1"
+       -DVTK=0 -DMATRIX=1 -DCHECKPOINT=1 -DMOVIE_TSTEP=2."
 echo "=== build (MAXLEVEL=8, TILT=0, TMAX=300) ==="
 if ! EXTRA="$EXTRA" bash "$ROOT/build.sh" > build.log 2>&1; then
     echo "BUILD FALLITA"; tail -20 build.log; exit 1
