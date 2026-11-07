@@ -29,7 +29,10 @@
     multigrid hierarchy of the Poisson solve + CUDA context): the only other
     way down is to reduce the cells (MAXLEVEL/NDIV0/LZ).
 */
-#include "navier-stokes/centered.h"
+// 2nd-order Crank-Nicolson extension of navier-stokes/centered.h
+// (2nd-order viscous term). Sorgente: ../solutori_secondo_ordine/centered_cn.h;
+// build.sh lo copia accanto al sorgente prima della compilazione.
+#include "centered_cn.h"
 
 // Minimal zlib interface: we do NOT include <zlib.h> because qcc cannot
 // parse the system headers it pulls in (unistd.h...).
@@ -146,7 +149,7 @@ const face vector muc[] = { NU, NU, NU };
 static void open_diagnostics(void) {
     if (pid() == 0) {
         FILE * fp = fopen("diagnostics.dat", "w");
-        fprintf(fp, "# t dt it enstrophy energy umax wmax circulation_slice separation xc yc cells mgp mgp_resa\n");
+        fprintf(fp, "# t dt it enstrophy energy umax wmax circulation_slice separation xc yc cells mgp mgp_resa palinstrophy angular_impulse\n");
         fclose(fp);
         fprintf(stderr, "# t enstrophy energy umax wmax circulation_slice separation\n");
     }
@@ -231,6 +234,32 @@ static int read_checkpoint(double tload) {
 // maximum residual of the pressure Poisson solve (at steady state)
 double max_resa = 0., max_resa_t = 0.;
 
+// -DPOISSON_ITER=n: exactly n V-cycles for the pressure projections only
+// (the viscosity solver keeps the default tolerance).
+#ifdef POISSON_ITER
+static int nitmin0 = 1, nitmax0 = 100;
+static double tol0 = 1e-3;
+
+event defaults (i = 0) {
+    nitmin0 = NITERMIN; nitmax0 = NITERMAX; tol0 = TOLERANCE;
+}
+
+// runs before centered.h's half-step projection in advection_term (last)
+event advection_term (i++) {
+    NITERMIN = NITERMAX = POISSON_ITER; TOLERANCE = 1e30;
+}
+
+// runs before centered.h's viscosity solve in viscous_term (last)
+event viscous_term (i++) {
+    NITERMIN = nitmin0; NITERMAX = nitmax0; TOLERANCE = tol0;
+}
+
+// runs before centered.h's final projection in projection (last)
+event projection (i++) {
+    NITERMIN = NITERMAX = POISSON_ITER; TOLERANCE = 1e30;
+}
+#endif
+
 int main()
 {
     origin(-0.5, -0.5, 0.);
@@ -239,12 +268,6 @@ int main()
     // z is not periodic: free-slip walls (default symmetry) as x,y.
 
     mu = muc;
-
-    // With -DPOISSON_ITER=n the Poisson solver does exactly n iterations.
-#ifdef POISSON_ITER
-    NITERMIN = NITERMAX = POISSON_ITER;
-    TOLERANCE = 1e30;
-#endif
 
     run();
 }
@@ -298,18 +321,32 @@ chk_loaded: ;
 /**
   Diagnostics once per unit of time.
   Enstrophy Z = int |omega|^2 dV, energy E = 1/2 int |u|^2 dV,
-  circulation and separation of the nuclei on the slice z = LZ/2.
+  circulation and separation of the nuclei on the slice z = LZ/2,
+palinstrophy P = int |grad omega_z|^2 dV and angular impulse I = int r^2 omega_z dV.
 */
+
+// omega_z at an arbitrary cell offset, for gradients (WZ cannot be subscripted)
+#define WZ_OFF(i,j,k) (((u.y[1 + (i), (j), (k)] - u.y[-1 + (i), (j), (k)]) \
+                      - (u.x[(i), 1 + (j), (k)] - u.x[(i), -1 + (j), (k)]))/(2.*Delta))
 
 event diagnostics (t += 1; t <= TMAX)
 {
     boundary((scalar *){u});
 
     double Z = 0., E = 0., G = 0., Umax = 0., Wmax = 0.;
+    double P = 0., I = 0.;
     foreach(reduction(+:Z) reduction(+:E) reduction(+:G)
-        reduction(max:Umax) reduction(max:Wmax)) {
+        reduction(max:Umax) reduction(max:Wmax)
+        reduction(+:P) reduction(+:I)) {
         double dV = cube(Delta);
         Z += (sq(WX) + sq(WY) + sq(WZ))*dV;
+        // palinstrophy P = int |grad omega_z|^2 dV
+        double dxw = (WZ_OFF(1,0,0) - WZ_OFF(-1,0,0))/(2.*Delta);
+        double dyw = (WZ_OFF(0,1,0) - WZ_OFF(0,-1,0))/(2.*Delta);
+        double dzw = (WZ_OFF(0,0,1) - WZ_OFF(0,0,-1))/(2.*Delta);
+        P += (sq(dxw) + sq(dyw) + sq(dzw))*dV;
+        // angular impulse about z: I = int (x^2 + y^2) omega_z dV
+        I += (sq(x) + sq(y))*WZ*dV;
         E += 0.5*(sq(u.x[]) + sq(u.y[]) + sq(u.z[]))*dV;
         Umax = max(Umax, sqrt(sq(u.x[]) + sq(u.y[]) + sq(u.z[])));
         Wmax = max(Wmax, sqrt(sq(WX) + sq(WY) + sq(WZ)));
@@ -349,8 +386,8 @@ event diagnostics (t += 1; t <= TMAX)
 
     if (pid() == 0) {
         FILE * fp = fopen("diagnostics.dat", "a");
-        fprintf(fp, "%.6g %.6e %d %.8e %.8e %.8e %.8e %.8e %.6e %.6e %.6e %d %d %.3e\n",
-            t, dt, i, Z, E, Umax, Wmax, G, sep, px, py, cells, mgp.i, mgp.resa);
+        fprintf(fp, "%.6g %.6e %d %.8e %.8e %.8e %.8e %.8e %.6e %.6e %.6e %d %d %.3e %.6e %.6e\n",
+            t, dt, i, Z, E, Umax, Wmax, G, sep, px, py, cells, mgp.i, mgp.resa, P, I);
         fclose(fp);
 
         fprintf(stderr, "%.6g %.6e %.6e %.6e %.6e %.6e %.6e\n",

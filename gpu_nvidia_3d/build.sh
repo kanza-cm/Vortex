@@ -35,6 +35,11 @@ EXTRA="${EXTRA:-}"
 BUILD=$(mktemp -d)
 trap 'rm -rf "$BUILD"' EXIT INT TERM
 cp "$SRC" "$BUILD/"
+# Local 2nd-order centered extension (Crank-Nicolson viscous term)
+cp "$HERE/../solutori_secondo_ordine/centered_cn.h" "$BUILD/" 2>/dev/null || {
+    echo "errore: centered_cn.h non trovato in ../solutori_secondo_ordine/" >&2
+    exit 1
+}
 
 echo "Compilo per GPU (CUDA 3D, singola precisione): $SRC ..."
 (

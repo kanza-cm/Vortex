@@ -38,3 +38,12 @@ gpu_nvidia_3d/vortici_*/animazione_*/*
 !gpu_nvidia_3d/vortici_*/animazione_*/*.sh
 !gpu_nvidia_3d/vortici_*/animazione_*/README.md
 !gpu_nvidia_3d/vortici_*/animazione_*/saetta3d.c
+
+# AMR L7 corrette (plotfiles pesanti) e marker
+gpu_nvidia_3d/vortici_*/heatmap_adattiva_fix/
+gpu_nvidia_3d/heatmap_L7fix.done
+
+# vecchi artefatti della presentazione (tenerli fuori dal repo pubblico)
+presentazione_coalescenza_3d.pdf
+presentazione_coalescenza_3d.pptx
+discorso_vortici_3d.md

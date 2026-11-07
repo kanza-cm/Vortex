@@ -1,0 +1,416 @@
+\documentclass[10pt,aspectratio=43]{beamer}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{tikz}
+
+\usetheme{Madrid}
+\useoutertheme{miniframes}
+\usefonttheme{serif}
+
+\definecolor{myblue}{RGB}{31,78,121}
+\setbeamercolor{structure}{fg=myblue}
+\setbeamercolor{palette primary}{bg=myblue,fg=white}
+\setbeamercolor{palette secondary}{bg=myblue!88,fg=white}
+\setbeamercolor{palette tertiary}{bg=myblue!78,fg=white}
+\setbeamercolor{palette quaternary}{bg=myblue,fg=white}
+\setbeamercolor{frametitle}{bg=myblue,fg=white}
+\setbeamercolor{title}{bg=myblue,fg=white}
+\setbeamercolor{section in head/foot}{bg=myblue,fg=white}
+\setbeamercolor{subsection in head/foot}{bg=myblue!80,fg=white}
+\setbeamercolor{author in head/foot}{bg=myblue,fg=white}
+\setbeamercolor{title in head/foot}{bg=myblue,fg=white}
+\setbeamercolor{institute in head/foot}{bg=myblue,fg=white}
+\setbeamercolor{date in head/foot}{bg=myblue,fg=white}
+\setbeamercolor{block title}{bg=myblue,fg=white}
+\setbeamercolor{block body}{bg=myblue!8,fg=black}
+
+\setbeamertemplate{footline}{%
+  \leavevmode%
+  \hbox{%
+  \begin{beamercolorbox}[wd=.5\paperwidth,ht=2.4ex,dp=1ex,left]{author in head/foot}%
+    \usebeamerfont{author in head/foot}\hspace*{1.6ex}\insertshortauthor
+  \end{beamercolorbox}%
+  \begin{beamercolorbox}[wd=.5\paperwidth,ht=2.4ex,dp=1ex,right]{institute in head/foot}%
+    \usebeamerfont{institute in head/foot}\insertshortinstitute\hspace*{1.6ex}
+  \end{beamercolorbox}}%
+  \vskip0pt%
+  \hbox{%
+  \begin{beamercolorbox}[wd=.72\paperwidth,ht=2.4ex,dp=1ex,left]{title in head/foot}%
+    \usebeamerfont{title in head/foot}\hspace*{1.6ex}\insertshorttitle
+  \end{beamercolorbox}%
+  \begin{beamercolorbox}[wd=.28\paperwidth,ht=2.4ex,dp=1ex,right]{date in head/foot}%
+    \usebeamerfont{date in head/foot}\insertframenumber{} / \inserttotalframenumber\hspace*{1.6ex}
+  \end{beamercolorbox}}%
+}
+
+\title[Coalescence of Vortex Tubes]{Coalescence of a Pair\\of Gaussian Vortex Tubes}
+\author[Ricciardi, Canzanella]{Pietro Ricciardi \quad Francesco Riccardo Canzanella}
+\institute{M2 Fluid Mechanics}
+\date{November 5, 2026}
+
+\newcommand{\titleframe}{%
+\begin{frame}[plain]
+  \begin{center}
+    \vspace{0.35cm}
+    \begin{beamercolorbox}[rounded=true,shadow=true,sep=10pt,center,wd=0.82\textwidth]{title}
+      \usebeamerfont{title}\inserttitle\par
+    \end{beamercolorbox}
+    \vspace{0.35cm}
+    {\large \insertauthor\par}
+    \vspace{1.15cm}
+    \begin{tabular}{@{}c@{\hspace{1.3cm}}c@{\hspace{1.3cm}}c@{}}
+      \includegraphics[height=1.05cm]{img/logo_su.png} &
+      M2 Fluid Mechanics &
+      \includegraphics[height=1.05cm]{img/logo_poly.png}
+    \end{tabular}
+    \vspace{0.85cm}
+    {\large \insertdate\par}
+  \end{center}
+\end{frame}}
+
+\newcommand{\outlineframe}[1]{%
+\begin{frame}
+  \vspace{0.9cm}
+  \begin{center}
+  \begin{tikzpicture}
+    \foreach \num/\name in {1/Physical Foundations, 2/Numerical Implementation, 3/Perspectives} {
+      \pgfmathsetmacro{\yy}{-\num*1.35}
+      \ifnum\num=#1
+        \node[circle,draw=myblue,fill=myblue,text=white,minimum size=0.85cm,font=\bfseries] (c\num) at (0,\yy) {\num};
+        \node[anchor=west,text=myblue,font=\Large] at (0.75,\yy) {\name};
+      \else
+        \node[circle,draw=gray!45,text=gray!55,minimum size=0.85cm,font=\bfseries] (c\num) at (0,\yy) {\num};
+        \node[anchor=west,text=gray!55,font=\Large] at (0.75,\yy) {\name};
+      \fi
+    }
+  \end{tikzpicture}
+  \end{center}
+\end{frame}}
+
+\begin{document}
+
+\section{Physical Foundations}
+\begin{frame}{Physical Background and Motivation}
+  \begin{columns}[T]
+    \begin{column}{0.52\textwidth}
+      \begin{block}{3D Incompressible Vorticity Equation}
+        \[
+          \frac{\partial \boldsymbol{\omega}}{\partial t}
+          + (\mathbf{u}\cdot\nabla)\boldsymbol{\omega}
+          = (\boldsymbol{\omega}\cdot\nabla)\mathbf{u}
+          + \nu\nabla^{2}\boldsymbol{\omega},
+        \]
+        \[
+          \nabla\cdot\mathbf{u}=0 .
+        \]
+      \end{block}
+    \end{column}
+    \begin{column}{0.46\textwidth}
+      \textbf{Physical Processes}
+      \begin{itemize}
+        \item Advection: non-linear transport by $\mathbf{u}$
+        \item Vortex stretching: $(\boldsymbol{\omega}\cdot\nabla)\mathbf{u}$ feeds small scales
+        \item Diffusion: viscous smoothing by $\nu$
+        \item 3D dynamics: forward energy cascade, coherent vortex tubes
+      \end{itemize}
+      \vspace{0.15cm}
+      \begin{block}{Building block}
+        Coalescence and reconnection of two vortex tubes.
+      \end{block}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{The Physical Model: Gaussian Vortex Tubes}
+  \begin{columns}[T]
+    \begin{column}{0.49\textwidth}
+      \textbf{Initial profile}
+      \[
+        \omega(r) = \frac{\Gamma}{\pi\sigma^{2}}
+        \exp\!\left(-\frac{r^{2}}{\sigma^{2}}\right)
+      \]
+      \begin{itemize}
+        \item Two co-rotating Gaussian tubes, $\sigma=0.09$
+        \item Varicose separation: \\
+              $d(z)=D\left(1+0.1\cos\frac{2\pi z}{L_z}\right)$
+        \item $D=0.14$, $L_z=4$; free-slip walls
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.49\textwidth}
+      \textbf{Two configurations}
+      \begin{itemize}
+        \item \textbf{Non-inclined} ($\mathrm{TILT}=0$): axes parallel to $z$
+        \item \textbf{Inclined} ($\mathrm{TILT}=2$): axes cross at $z\approx 3.1$
+        \item Same circulation: $\Gamma\approx 5.1\times10^{-2}$
+      \end{itemize}
+      \vspace{0.1cm}
+      \centering
+      \includegraphics[width=0.98\linewidth]{img/schema_config.png}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{Two Configurations at $T=1600$ (L7)}
+  \begin{center}
+    \includegraphics[width=0.97\textwidth]{img/confronto_L7_T1600.png}
+  \end{center}
+  \vspace{0.05cm}
+  \begin{itemize}\small
+    \item Non-inclined (coalescence): separation collapses to $\approx0.01$ at $t\approx75$; $w_{\max}$ $0.99\to0.19$; enstrophy $-83\%$.
+    \item Inclined (reconnection): $w_{\max}$ oscillates $1.3$--$2.4$ up to $t\approx150$, then decays to $0.13$; enstrophy decays to $5.5\times10^{-3}$ (below the non-inclined case after $t\approx750$).
+  \end{itemize}
+  \vspace{0.05cm}
+  \centering{\scriptsize L7 ($128\times128\times512$), CFL $0.5$, new centered (2nd-order CN); runs up to $T=1600$.\\
+  \scriptsize the two-peak separation metric becomes ill-defined at late times.}
+\end{frame}
+
+\section{Numerical Implementation}
+\begin{frame}{Numerical Formulation \& Setup}
+  \begin{columns}[T]
+    \begin{column}{0.5\textwidth}
+      \begin{block}{Solver}
+        \[
+          \partial_{t}\mathbf{u}+(\mathbf{u}\cdot\nabla)\mathbf{u}
+          =-\nabla p+\nu\nabla^{2}\mathbf{u}
+        \]
+        \[
+          \nabla\cdot\mathbf{u}=0
+        \]
+        \[
+          \nabla^{2}p=\frac{1}{\Delta t}\nabla\cdot\mathbf{u}^{*},
+          \quad
+          \mathbf{u}_{f}\leftarrow\mathbf{u}_{f}-\Delta t\nabla p
+        \]
+        \begin{itemize}
+          \item Basilisk centered: CUDA, fp32, fixed grid
+          \item incflo/AMReX: CUDA, AMR
+        \end{itemize}
+      \end{block}
+    \end{column}
+    \begin{column}{0.47\textwidth}
+      \begin{block}{Simulation Parameters}
+        \begin{itemize}
+          \item Core radius: $\sigma=0.09$
+          \item Separation: $2d=0.28$ ($D=0.14$)
+          \item Viscosity: $\nu=10^{-5}$ \\
+                ($Re_{\Gamma}\approx 2.5\times10^{3}$)
+          \item Grid levels: $L=4\ldots8$ \\
+                ($64^{3}\to 256\times256\times1024$)
+          \item CFL: $0.3$--$0.5$
+          \item AMR: ratio $4$, VORTERR $0.3\ldots10^{-2}$
+        \end{itemize}
+      \end{block}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{Fixed-Grid GPU: Cost Model}
+  \begin{columns}[T]
+    \begin{column}{0.58\textwidth}
+      \centering
+      {\scriptsize\setlength{\tabcolsep}{3pt}
+      \begin{tabular}{@{}lccc r@{}}
+        \toprule
+        Level & Grid & Cells & VRAM & s/step \\
+        \midrule
+        L6 & $64\times64\times256$    & 1.05M & 0.15 GB & 0.2 \\
+        L7 & $128\times128\times512$  & 8.4M  & 1.1 GB  & 1.6 \\
+        L8 & $256\times256\times1024$ & 67.1M & 7.5 GB  & 2.8 \\
+        \bottomrule
+      \end{tabular}}
+    \end{column}
+    \begin{column}{0.39\textwidth}
+      \begin{itemize}
+        \item fp32: 4 bytes per value
+        \item $\approx 120$ bytes/cell (fields, ghosts, multigrid, CUDA context)
+        \item 8 GB $\to$ 67M cells; 16 GB $\to\approx$140M
+        \item L9 (537M cells) would need $\approx$58 GB
+      \end{itemize}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{Conservation Laws \& Dynamics Diagnostics}
+  \begin{columns}[T]
+    \begin{column}{0.52\textwidth}
+      \begin{block}{Conservation diagnostics at $T=1600$ (L7)}
+        \centering\small
+        \begin{tabular}{@{}lrr@{}}
+          \toprule
+          & TILT=2 & TILT=0 \\
+          \midrule
+          $\Delta\Gamma/\Gamma_0$ & $-43.4\%$ & $-8.3\%$ \\
+          $I(T)/I_0-1$ & $+0.038$ & $+1.34$ \\
+          $Z(T)/Z(0)$ & 0.044 & 0.174 \\
+          $d(T)$ & 0.022 & 0.011 \\
+          \bottomrule
+        \end{tabular}
+        \\[0.1cm]
+        {\scriptsize $\Gamma$: circulation on the fixed slice $z=2$ (not a material curve); $I$: angular impulse; $d$: separation.}
+      \end{block}
+    \end{column}
+    \begin{column}{0.46\textwidth}
+      \centering
+      \includegraphics[width=\linewidth]{img/cons_P_t.png}\\[0.08cm]
+      \includegraphics[width=\linewidth]{img/cons_sep_t.png}
+    \end{column}
+  \end{columns}
+
+\end{frame}
+
+\begin{frame}{Grid Convergence \& Parameter Sensitivity}
+  \begin{center}
+    \includegraphics[width=0.92\textwidth]{img/t30_gauss_filtered.png}
+  \end{center}
+  \vspace{0.05cm}
+  \begin{itemize}\small
+    \item $T=30$, L8 reference; $L_2$ error compared on the Lf$=5$ grid with a Gaussian filter of $\sigma=3$ cells: the phase-sensitive filament content is removed.
+    \item Observed order: inclined $p=1.93$ (L5$\to$L6) and $2.24$ (L6$\to$L7), fit $2.09$ over L5--L7; non-inclined $2.22$ and $2.50$, fit $2.36$.
+    \item Without the filter the inclined case drops to $p\approx1.4$--$2.0$: the scheme is second order, the apparent loss is a phase error.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Poisson Solver: Elliptic Residuals}
+  \begin{columns}[T]
+    \begin{column}{0.52\textwidth}
+      \centering\small
+      \textbf{Max projection residual, $T=30$}\\[0.05cm]
+      \begin{tabular}{@{}ccc r@{}}
+        \toprule
+        MAXLEVEL & inclined & non-incl. \\
+        \midrule
+        4 & 7.6e-4 & 6.7e-4 \\
+        5 & 3.2e-3 & 9.8e-4 \\
+        6 & 8.0e-3 & 1.9e-3 \\
+        7 & 1.1e-2 & 2.3e-3 \\
+        8 & 1.3e-2 & 1.5e-3 \\
+        \bottomrule
+      \end{tabular}
+    \end{column}
+    \begin{column}{0.45\textwidth}
+      \begin{itemize}\small
+        \item Residual grows with the level (more cells, same tolerance) but stays below $1.3\times10^{-2}$ at L8
+        \item Non-inclined case: below $2.3\times10^{-3}$ at all levels
+        \item Fixed-grid solver uses 2 V-cycles per step
+        \item Residual is relative to $\max|\nabla\cdot\mathbf{u}^{*}/\Delta t|$
+      \end{itemize}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{Adaptive Grid: How It Is Built}
+  \begin{columns}[T]
+    \begin{column}{0.55\textwidth}
+      \begin{itemize}
+        \item Uniform base $2^{\mathrm{MINLEVEL}}$ (e.g.\ $16\times16\times64$)
+        \item Refinement ratio $4$ per level; levels $=\lceil(\mathrm{MAXLEVEL}-\mathrm{MINLEVEL})/2\rceil$
+        \item Tagging: $|\boldsymbol{\omega}|>\mathrm{VORTERR}$ (one threshold per level)
+        \item Periodic regrid; average down/up between levels
+        \item Cell budget (max\_cells): if the hierarchy explodes, thresholds are raised
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.42\textwidth}
+      \centering
+      \begin{tikzpicture}[scale=0.9]
+        \draw[thick,fill=myblue!6] (0,0) rectangle (5,3.6);
+        \draw[thick,fill=white] (1.0,0.7) rectangle (4.0,2.9);
+        \draw[thick,fill=white] (1.8,1.3) rectangle (3.2,2.3);
+        \node[anchor=south west,font=\scriptsize] at (0.05,0.02) {L0 ($2^{-4}$)};
+        \node[anchor=north west,font=\scriptsize] at (1.05,2.85) {L1 ($2^{-6}$)};
+        \node[anchor=north,font=\scriptsize] at (2.5,2.25) {L2 ($2^{-8}$)};
+      \end{tikzpicture}
+      \\[0.15cm]
+      {\scriptsize Nested refinement: detail only where $|\boldsymbol{\omega}|$ is large.}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{AMR on GPU: Data Structures \& Regrid Cycle}
+  \begin{columns}[T]
+    \begin{column}{0.55\textwidth}
+      \begin{itemize}\small
+        \item Each level is a \emph{BoxArray}: a list of non-overlapping boxes covering only the regions that need refinement
+        \item Data: one MultiFab per field ($\boldsymbol{\omega}$, $\mathbf{u}_f$, $p$, \dots) = BoxArray + distribution mapping + device arrays (fp32)
+        \item Tagging: a GPU kernel computes $|\boldsymbol{\omega}|$ cell-by-cell and flags cells above VORTERR
+        \item Clustering (Berger--Oliger): flagged cells are grouped into a few large boxes, to limit kernel launches
+        \item Regrid: build the new fine BoxArray, average down the fine solution, fill coarse/fine ghosts
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.43\textwidth}
+      \centering
+      \begin{tikzpicture}[scale=0.82]
+        \draw[thick,fill=myblue!6] (0,0) rectangle (4.7,3.4);
+        \node[anchor=south west,font=\scriptsize] at (0.06,0.03) {L0};
+        \draw[thick,fill=white] (0.9,0.7) rectangle (2.7,2.7);
+        \node[font=\scriptsize] at (1.8,1.7) {L1};
+        \draw[thick,fill=white] (2.9,1.0) rectangle (4.3,3.0);
+        \node[font=\scriptsize] at (3.6,2.0) {L1};
+        \draw[thick,fill=myblue!20] (1.35,1.25) rectangle (2.15,2.2);
+        \node[font=\scriptsize] at (1.75,1.72) {L2};
+      \end{tikzpicture}
+      \\[0.1cm]
+      {\scriptsize every level is a set of boxes; the fine data live only inside them}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{AMR on GPU: Execution Model \& Costs}
+  \begin{columns}[T]
+    \begin{column}{0.57\textwidth}
+      \begin{itemize}\small
+        \item Level update = sequence of GPU kernels: advection/diffusion are one kernel per box, while the Poisson solve uses a multigrid across levels
+        \item Ghost cells: copy from same-level neighbours, interpolate from the coarser level; after each regrid, average down and fill patches
+        \item Global reductions (norms, number of tagged cells) must complete before a regrid; kernels on a level run in order on the default stream
+        \item Memory: $\approx 357$ MB per million cells, about $3\times$ the fixed grid; the arena reuses buffers
+        \item Measured: 11.7M cells $\to$ 6.4 GB; $T=30$ cap: 15M cells (8 GB GPU)
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.41\textwidth}
+      \centering{\scriptsize\setlength{\tabcolsep}{3pt}
+      \begin{tabular}{@{}lcc@{}}
+        \toprule
+        & fixed & AMR \\
+        \midrule
+        bytes/cell & $\sim$120 B & $\sim$357 MB/M \\
+        cells at 8 GB & 67M & 11--15M \\
+        strength & uniform & local \\
+        \bottomrule
+      \end{tabular}}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{Adaptive Grid: Error Map at $T=30$}
+  \begin{columns}[T]
+    \begin{column}{0.48\textwidth}
+      \centering
+      \includegraphics[height=3.95cm]{img/heatmap_T30_incl.png}\\[1pt]
+      {\scriptsize\color{gray}inclined ($\mathrm{TILT}=2$)}
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      \centering
+      \includegraphics[height=3.95cm]{img/heatmap_T30_non.png}\\[1pt]
+      {\scriptsize\color{gray}non-inclined ($\mathrm{TILT}=0$)}
+    \end{column}
+  \end{columns}
+  \vspace{0.05cm}
+  \begin{itemize}\small
+    \item $T=30$, MAXLEVEL $4$--$8$; thresholds $0.3$, $0.1$, $3\times10^{-2}$; the same qualitative picture in both configurations.
+    \item L4--L5: the error is set by MAXLEVEL only (grid-limited): $+0.14\to-0.07$ (inclined), $-0.45\to-0.79$ (non-inclined).
+    \item From L6 the threshold matters; the finest levels give the largest gain, up to $1.5\times10^{7}$ cells at L8.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Methods \& Software}
+  \begin{itemize}\small
+    \item Solvers: Basilisk (Popinet, 2015), centered scheme with CUDA backend; incflo / AMReX (Zhang et al., 2019) for block-structured AMR.
+    \item Implementation: second-order Crank--Nicolson viscous term (\texttt{centered\_cn.h}); on-the-fly palinstrophy $P$ and angular impulse $I$; AMR error-map and GPU cost pipelines.
+    \item Hardware: single NVIDIA RTX 3070 (8 GB), single precision; fixed-grid runs L4--L8 up to $T=1600$.
+  \end{itemize}
+\end{frame}
+
+\end{document}

@@ -42,6 +42,7 @@ T="${T:-10}"           # final time of each run
 CFL="${CFL:-0.3}"      # CFL (as in the production runs)
 NDIV0="${NDIV0:-1}"    # base divisions in x,y at MAXLEVEL=0 (z = 4x)
 TILT="${TILT:-2}"      # inclinazione a X (2 = ~8 gradi, 0 = tubi paralleli)
+POISSON_ITER="${POISSON_ITER:-}"   # se impostato: V-cycle fissi del solver (es. 5)
 
 LREF=$LMAX
 
@@ -63,6 +64,8 @@ while [ "$L" -le "$LREF" ]; do
   # binary into the run folder (same logic as build.sh).
   BUILD=$(mktemp -d)
   cp "$HERE/saetta3d.c" "$BUILD/"
+  cp "$HERE/../solutori_secondo_ordine/centered_cn.h" "$BUILD/" 2>/dev/null || {
+      echo "errore: centered_cn.h non trovato in ../solutori_secondo_ordine/" >&2; exit 1; }
   (
     cd "$BUILD"
     qcc -autolink -disable-dimensions -O3 -grid=cuda/multigrid3D \
@@ -70,6 +73,7 @@ while [ "$L" -le "$LREF" ]; do
         -DCFL_USER=$CFL \
         -DMOVIE=0 -DVTK=0 -DMATRIX=1 \
         -DNDIV0=$NDIV0 -DMAXLEVEL=$L -DTMAX=$T -DTILT=$TILT \
+        ${POISSON_ITER:+-DPOISSON_ITER=$POISSON_ITER} \
         saetta3d.c -o saetta3d_gpu -lm -lz
   )
   mv "$BUILD/saetta3d_gpu" "$run/saetta3d_gpu"
